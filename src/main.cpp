@@ -252,7 +252,7 @@ void predictTask(void *) {
 void startNetwork() {
     // i'm always the network. the hotspot is only my way out to the internet
     WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(AP_SSID, AP_PASS);
+    WiFi.softAP(AP_SSID, AP_PASS, 1, 0, 10);   // let up to 10 devices join
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     address = WiFi.softAPIP().toString();
     footNote = "join wifi " AP_SSID " then open:";

@@ -39,11 +39,16 @@ def push(flood: float | None = None, air: float | None = None):
 
 # e.g. /predict?water=55&aqi=120  (either one can be left off)
 @app.get("/predict")
-def get_prediction(water: float | None = None, aqi: float | None = None):
-    scores = predict(water, aqi)
+def get_prediction(water: float | None = None, aqi: float | None = None, replay: int = 0):
+    scores = predict(water, aqi, replay=bool(replay))
     out = {"flood": as_percent(scores.get("flood")), "air": as_percent(scores.get("air"))}
-    source = "model.py"
 
+    # replay is the canned demo row, so push doesn't override it
+    if replay:
+        out["source"] = "replay"
+        return out
+
+    source = "model.py"
     # anything the model pushed lately wins over model.py
     if time.time() - pushed["at"] < PUSH_GOOD_FOR:
         for name in ("flood", "air"):

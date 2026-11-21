@@ -18,7 +18,7 @@
 // my teammate's model on railway. paste the railway link and keep /predict on the end
 #define PREDICT_URL "https://floodair-predict-production.up.railway.app/predict"
 #define PREDICT_EVERY_MS 15000
-#define AI_LABEL "AI score"   // what the number is called on the screen
+#define AI_LABEL "Surge Risk"   // what the number is called on the screen
 
 // also reachable at http://floodair.local when the network allows it
 #define HOSTNAME "floodair"
