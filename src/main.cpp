@@ -436,7 +436,7 @@ bool readTap(int &tx, int &ty) {
     if (held < 255) held++;
     if (held != 2 || millis() - lastTap < 300) return false;
     lastTap = millis();
-    tx = x; ty = y;
+    tx = 319 - x; ty = y;   // my touch panel reads left and right backwards
     return true;
 }
 
