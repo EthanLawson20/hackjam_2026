@@ -212,7 +212,7 @@ def main() -> None:
     ap.add_argument("--station", default=DEFAULT_STATION)
     ap.add_argument("--model", default="water_model.keras", type=Path)
     ap.add_argument("--scaler", default=None, help="joblib file for the scaler used in training")
-    ap.add_argument("--threshold", type=float, default=0.5)
+    ap.add_argument("--threshold", type=float, default=0.8, help="flood_risk_next_6h threshold for binary classification")
     ap.add_argument("--hours-back", type=int, default=48, help="history to fetch (needs >= 24 for resid_max_24h)")
     ap.add_argument("--include-partial", action="store_true", help="include the current incomplete hour")
     ap.add_argument("--loop", type=float, default=None, metavar="MINUTES", help="repeat every N minutes")
