@@ -22,6 +22,7 @@ train the model, and any scaling (StandardScaler, etc.) must be applied the same
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone
@@ -105,6 +106,33 @@ def load_model(path: Path):
     model = keras.models.load_model(path)
     log.info("Loaded %s  input_shape=%s  output_shape=%s", path, model.input_shape, model.output_shape)
     return model
+
+
+class ZScoreScaler:
+    def __init__(self, features: list[str], mean: list[float], scale: list[float]):
+        if features != selected_features:
+            raise ValueError("Scaler feature order does not match selected_features.")
+        self.mean = np.asarray(mean, dtype="float32")
+        self.scale = np.asarray(scale, dtype="float32")
+        if self.mean.shape != (len(selected_features),) or self.scale.shape != self.mean.shape:
+            raise ValueError("Scaler mean and scale must contain one value per selected feature.")
+        if not np.isfinite(self.mean).all() or not np.isfinite(self.scale).all() or (self.scale == 0).any():
+            raise ValueError("Scaler mean and scale must be finite, with nonzero scales.")
+
+    def transform(self, values: np.ndarray) -> np.ndarray:
+        return (values - self.mean) / self.scale
+
+
+def load_scaler(path: Path | None = None):
+    if path is None:
+        path = Path(__file__).with_name("water_model_scaler.json")
+        if not path.exists():
+            return None
+    if path.suffix.lower() == ".json":
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return ZScoreScaler(data["features"], data["mean"], data["scale"])
+    import joblib
+    return joblib.load(path)
 
 
 def build_input(feats: pd.DataFrame, input_shape, scaler) -> np.ndarray:
@@ -194,11 +222,8 @@ def main() -> None:
                         format="%(asctime)s %(levelname)s %(message)s")
 
     model = load_model(a.model)
-    scaler = None
-    if a.scaler:
-        import joblib
-        scaler = joblib.load(a.scaler)
-    else:
+    scaler = load_scaler(a.scaler)
+    if scaler is None:
         log.warning("No --scaler given: features are passed to the model unscaled. If you scaled them in "
                     "training, predictions will be wrong.")
 

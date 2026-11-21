@@ -1,12 +1,14 @@
+import json
 import tensorflow as tf
 import pandas as pd
 import numpy as np
 import keras
 import seaborn as sns
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-dataset = pd.read_csv('hackjam_2026/data/data/flood_dataset.csv')
+dataset = pd.read_csv('./data/data/flood_dataset.csv')
 
 print(dataset.head(5))
 
@@ -49,7 +51,6 @@ sns.heatmap(
     cmap="coolwarm",
     center=0,
 )
-plt.show()
 
 def build_model(input_shape):
     model = keras.Sequential()
@@ -78,4 +79,12 @@ history = train_model(model, normalized_data[selected_features], dataset[target]
 print("Model training completed.")
 print("Final training accuracy:", history.history['accuracy'][-1])
 
-model.save('hackjam_2026/models/water_model.keras')
+model.save('./models/water_model.keras')
+scaler = {
+    "features": selected_features,
+    "mean": numeric_data[selected_features].mean().tolist(),
+    "scale": scales[selected_features].tolist(),
+}
+Path(__file__).with_name("water_model_scaler.json").write_text(
+    json.dumps(scaler, indent=2), encoding="utf-8"
+)
