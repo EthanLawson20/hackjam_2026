@@ -23,6 +23,10 @@ Usage
 
   python build_datasets.py all ...             # flood, then pollution
 
+For a water-level-only flood target, use --target-mode highwater and pass a
+station-specific --flood-threshold-m converted to MLLW. The same threshold is
+applied to every station passed to --stations.
+
 Things you must supply or verify (the script warns when they are missing)
 -------------------------------------------------------------------------
   * --flood-threshold-m : a water level in metres above MLLW that counts as
@@ -44,6 +48,7 @@ import hashlib
 import io
 import json
 import logging
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -135,6 +140,7 @@ def cached_get(url: str, params: dict, cache_dir: Path, *, as_json: bool,
     if cacheable and path.exists():
         text = path.read_text()
     else:
+        time.sleep(1.0)
         r = SESSION.get(url, params=params, timeout=timeout)
         r.raise_for_status()
         text = r.text
@@ -183,10 +189,12 @@ def coops_fetch(station: str, product: str, start: date, end: date, cache_dir: P
         try:
             payload = cached_get(COOPS_URL, params, cache_dir, as_json=True, cacheable=not _is_recent(e))
         except requests.RequestException as exc:
-            log.warning("CO-OPS %s %s %s..%s failed: %s", station, product, b, e, exc)
-            continue
+            raise RuntimeError(f"CO-OPS {station} {product} {b}..{e} failed: {exc}") from exc
         if "error" in payload:
-            log.debug("CO-OPS %s %s %s..%s: %s", station, product, b, e, payload["error"].get("message"))
+            message = payload["error"].get("message")
+            if product in {"water_level", "predictions"}:
+                raise RuntimeError(f"CO-OPS {station} {product} {b}..{e}: {message}")
+            log.warning("CO-OPS %s %s %s..%s unavailable: %s", station, product, b, e, message)
             continue
         rows.extend(payload.get(key, []))
     return pd.DataFrame(rows)
@@ -312,8 +320,13 @@ def forward_max(s: pd.Series, h: int) -> pd.Series:
 
 
 def add_features_and_labels(df: pd.DataFrame, horizon: int, flood_threshold_m: float | None,
-                            ff_flag: pd.Series | None) -> pd.DataFrame:
+                            ff_flag: pd.Series | None, target_mode: str = "combined") -> pd.DataFrame:
     """df: hourly, regular UTC index, one station. Features look back; labels look forward."""
+    if target_mode not in {"combined", "highwater", "surge"}:
+        raise ValueError(f"Unknown flood target mode: {target_mode}")
+    if target_mode == "highwater" and flood_threshold_m is None:
+        raise ValueError("A flood threshold is required for the highwater target.")
+
     df = df.copy()
     df["resid_max_6h"] = df["resid_max"].rolling(6, min_periods=1).max()
     df["resid_max_24h"] = df["resid_max"].rolling(24, min_periods=1).max()
@@ -328,13 +341,15 @@ def add_features_and_labels(df: pd.DataFrame, horizon: int, flood_threshold_m: f
     labels = []
     fm = forward_max(df["resid_max"], horizon)
     df[f"surge_next_{horizon}h"] = fm.ge(SURGE_RESIDUAL_M).astype(float).where(fm.notna())
-    labels.append(f"surge_next_{horizon}h")
+    if target_mode in {"combined", "surge"}:
+        labels.append(f"surge_next_{horizon}h")
 
     if flood_threshold_m is not None:
         fm = forward_max(df["wl_max"], horizon)
         df[f"highwater_next_{horizon}h"] = fm.ge(flood_threshold_m).astype(float).where(fm.notna())
-        labels.append(f"highwater_next_{horizon}h")
-    if ff_flag is not None:
+        if target_mode in {"combined", "highwater"}:
+            labels.append(f"highwater_next_{horizon}h")
+    if ff_flag is not None and target_mode == "combined":
         df[f"ffwarn_next_{horizon}h"] = forward_max(ff_flag.reindex(df.index).fillna(0.0), horizon)
         labels.append(f"ffwarn_next_{horizon}h")
 
@@ -342,13 +357,17 @@ def add_features_and_labels(df: pd.DataFrame, horizon: int, flood_threshold_m: f
     df[target] = df[labels].max(axis=1, skipna=True).where(df[labels].notna().any(axis=1))
     df = df.iloc[:-horizon]                         # incomplete look-ahead window at the end
     df = df[df["wl_mean"].notna() | df["resid_mean"].notna()]
-    df = df.dropna(subset=[target])
+    df = df.dropna(subset=[
+        "resid_mean", "resid_max", "resid_max_6h", "resid_max_24h", target,
+    ])
     df["split_group"] = df.index.strftime("%Y-%m")  # group CV folds by month (or by storm)
     return df
 
 
 def build_flood_dataset(start: date, end: date, out_dir: Path, *, horizon: int,
-                        flood_threshold_m: float | None, ff_path: str | None) -> pd.DataFrame:
+                        flood_threshold_m: float | None, ff_path: str | None,
+                        stations: list[str] | None = None,
+                        target_mode: str = "combined") -> pd.DataFrame:
     cache = out_dir / "raw_cache"
     idx = pd.date_range(pd.Timestamp(start, tz="UTC"), pd.Timestamp(end, tz="UTC") + pd.Timedelta(hours=23),
                         freq="1h")
@@ -366,11 +385,11 @@ def build_flood_dataset(start: date, end: date, out_dir: Path, *, horizon: int,
         log.warning("No --flood-threshold-m: high-water label omitted.")
 
     frames = []
-    for st in STATIONS:
+    for st in stations or STATIONS:
         log.info("Fetching water level for %s ...", st)
         base = build_station_hourly(st, start, end, cache).reindex(idx)
         base = base.join(met).join(rain)
-        base = add_features_and_labels(base, horizon, flood_threshold_m, ff_flag)
+        base = add_features_and_labels(base, horizon, flood_threshold_m, ff_flag, target_mode)
         base.insert(0, "station", st)
         frames.append(base)
     out = pd.concat(frames)
@@ -657,6 +676,9 @@ def main() -> None:
     ap.add_argument("--horizon", type=int, default=6, help="label look-ahead window in hours")
     ap.add_argument("--flood-threshold-m", type=float, default=None, help="flood water level, m above MLLW")
     ap.add_argument("--ff-warnings", default=None, help="IEM flash flood warning CSV/shapefile")
+    ap.add_argument("--stations", nargs="+", default=STATIONS, help="CO-OPS station IDs for flood dataset")
+    ap.add_argument("--target-mode", choices=["combined", "highwater", "surge"], default="combined",
+                    help="combined event label, water-level threshold, or surge-only label")
     ap.add_argument("--habs-csv", default=None, help="FWC red tide cell counts CSV")
     ap.add_argument("--wqp-service", choices=["auto", "wqx3", "legacy"], default="auto",
                     help="which Water Quality Portal endpoint to use")
@@ -669,8 +691,11 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if a.step in ("flood", "all"):
+        if a.target_mode == "highwater" and a.flood_threshold_m is None:
+            ap.error("--flood-threshold-m is required when --target-mode=highwater.")
         build_flood_dataset(a.start, a.end, out_dir, horizon=a.horizon,
-                            flood_threshold_m=a.flood_threshold_m, ff_path=a.ff_warnings)
+                            flood_threshold_m=a.flood_threshold_m, ff_path=a.ff_warnings,
+                            stations=a.stations, target_mode=a.target_mode)
     if a.step in ("pollution", "all"):
         build_pollution_dataset(a.start, a.end, out_dir, habs_csv=a.habs_csv, horizon=a.horizon,
                                 wqp_service=a.wqp_service)

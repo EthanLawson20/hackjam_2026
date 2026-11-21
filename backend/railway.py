@@ -4,15 +4,12 @@ from __future__ import annotations
 
 import argparse
 import logging
-import math
 import os
 import sys
 import time
-from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
-import numpy as np
 import requests
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -33,16 +30,6 @@ def build_endpoint(base_url: str, path: str) -> str:
     return urljoin(base_url + "/", path.lstrip("/"))
 
 
-def _json_value(value: object) -> object:
-    if isinstance(value, (date, datetime)):
-        return value.isoformat()
-    if isinstance(value, np.generic):
-        value = value.item()
-    if isinstance(value, float) and not math.isfinite(value):
-        return None
-    return value
-
-
 def send_prediction(
     prediction: dict,
     endpoint_url: str,
@@ -50,21 +37,21 @@ def send_prediction(
     token: str | None,
     timeout: float,
 ) -> int:
-    payload = {key: _json_value(value) for key, value in prediction.items()}
     headers = {"Accept": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    response = requests.post(endpoint_url, json=payload, headers=headers, timeout=timeout)
+    params = {"flood": float(prediction["probability"]) * 100}
+    response = requests.post(endpoint_url, params=params, headers=headers, timeout=timeout)
     response.raise_for_status()
     return response.status_code
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", default=os.getenv("RAILWAY_API_URL", ""),
+    parser.add_argument("--url", default=os.getenv("RAILWAY_API_URL", "https://floodair-predict-production.up.railway.app"),
                         help="Railway service base URL (or set RAILWAY_API_URL)")
-    parser.add_argument("--endpoint", default=os.getenv("RAILWAY_PREDICTIONS_PATH", "/api/predictions"),
+    parser.add_argument("--endpoint", default=os.getenv("RAILWAY_PREDICTIONS_PATH", "/push"),
                         help="POST path (or set RAILWAY_PREDICTIONS_PATH)")
     parser.add_argument("--token", default=os.getenv("RAILWAY_API_TOKEN"),
                         help="optional bearer token (or set RAILWAY_API_TOKEN)")

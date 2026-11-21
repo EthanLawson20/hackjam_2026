@@ -6,3 +6,4 @@
 include/secrets.h
 __pycache__/
 api/.venv/
+data/data/raw_cache/
