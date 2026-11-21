@@ -7,11 +7,16 @@
 
 // hotspot i also join, only so i can reach the internet (2.4GHz, campus wifi won't work)
 // FloodAir runs either way. without the hotspot the ai scores just show --
+// the real hotspot name and password live in secrets.h, which git ignores
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
 #define WIFI_SSID "YOUR_HOTSPOT_NAME"
 #define WIFI_PASS "YOUR_HOTSPOT_PASSWORD"
+#endif
 
 // my teammate's model on railway. paste the railway link and keep /predict on the end
-#define PREDICT_URL "https://YOUR-APP.up.railway.app/predict"
+#define PREDICT_URL "https://floodair-predict-production.up.railway.app/predict"
 #define PREDICT_EVERY_MS 15000
 #define AI_LABEL "AI score"   // what the number is called on the screen
 

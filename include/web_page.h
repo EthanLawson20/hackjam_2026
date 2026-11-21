@@ -28,6 +28,7 @@ h2{margin:0 0 14px;font-size:22px}
 .word.l0{background:var(--ok)}
 .word.l1{background:var(--warn);color:var(--ink)}
 .word.l2{background:var(--danger)}
+.ai{font-weight:600;font-size:14px;color:var(--soft);align-self:center}
 .tip{margin:10px 0 4px}
 .age{margin:0;font-size:14px;color:var(--soft)}
 /* the flood reading is drawn as a staff gauge, the striped board you see bolted to bridge piers */
@@ -64,7 +65,7 @@ footer{padding-top:18px;font-size:14px;color:var(--soft)}
         <div class="mark d" id="fd"><span>danger</span></div>
       </div>
       <div>
-        <div class="read"><span class="num cond" id="fnum">--</span><span class="word" id="fword">No data</span></div>
+        <div class="read"><span class="num cond" id="fnum">--</span><span class="word" id="fword">No data</span><span class="ai" id="fai"></span></div>
         <p class="tip" id="ftip"></p>
         <p class="age" id="fage"></p>
       </div>
@@ -72,7 +73,7 @@ footer{padding-top:18px;font-size:14px;color:var(--soft)}
   </section>
   <section>
     <h2 class="cond">Air quality</h2>
-    <div class="read"><span class="num cond" id="anum">--</span><span class="word" id="aword">No data</span></div>
+    <div class="read"><span class="num cond" id="anum">--</span><span class="word" id="aword">No data</span><span class="ai" id="aai"></span></div>
     <div class="band" id="band" aria-hidden="true"><div id="pin" hidden></div></div>
     <div class="ends"><span>0, clean</span><span id="amax"></span></div>
     <p class="tip" id="atip"></p>
@@ -102,6 +103,7 @@ function sensor(name, pre, s) {
   $(pre + 'num').textContent = s.value == null ? '--' : Math.round(s.value) + s.suffix;
   $(pre + 'word').textContent = WORD[s.level];
   $(pre + 'word').className = 'word l' + s.level;
+  $(pre + 'ai').textContent = s.predicted == null ? '' : 'AI score ' + s.predicted + '%';
   $(pre + 'tip').textContent = TIP[name][s.level + 1];
   $(pre + 'age').textContent = s.age == null ? '' : 'Last reading ' + ago(s.age);
 }
